@@ -20,21 +20,25 @@ class RemoteConfigHttpException implements Exception {
 ///
 /// [baseUrl] should include the `/v1` prefix, e.g. `https://api.example.com/v1`.
 class HttpRemoteConfigDataSource implements RemoteConfigDataSource {
-  HttpRemoteConfigDataSource({
-    required String baseUrl,
-    http.Client? httpClient,
-  })  : _base = _normalizeBase(baseUrl),
-        _client = httpClient ?? http.Client();
+  HttpRemoteConfigDataSource({required String baseUrl, http.Client? httpClient})
+    : _base = _normalizeBase(baseUrl),
+      _client = httpClient ?? http.Client();
 
   final Uri _base;
   final http.Client _client;
 
   static Uri _normalizeBase(String baseUrl) {
-    final trimmed = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final trimmed = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     return Uri.parse(trimmed);
   }
 
-  Uri _buildUri(String path, ConfigRequestContext context, [Map<String, String>? extra]) {
+  Uri _buildUri(
+    String path,
+    ConfigRequestContext context, [
+    Map<String, String>? extra,
+  ]) {
     final qp = Map<String, String>.from(context.toQueryParameters());
     if (extra != null) {
       qp.addAll(extra);
@@ -44,9 +48,9 @@ class HttpRemoteConfigDataSource implements RemoteConfigDataSource {
   }
 
   Map<String, String> _headers(ConfigRequestContext context) => {
-        'Accept': 'application/json',
-        ...context.headers,
-      };
+    'Accept': 'application/json',
+    ...context.headers,
+  };
 
   @override
   Future<ConfigBundle> fetchLatest(ConfigRequestContext context) async {
@@ -60,7 +64,10 @@ class HttpRemoteConfigDataSource implements RemoteConfigDataSource {
   }
 
   @override
-  Future<DeltaFetchResult> fetchDelta(ConfigRequestContext context, int sinceVersion) async {
+  Future<DeltaFetchResult> fetchDelta(
+    ConfigRequestContext context,
+    int sinceVersion,
+  ) async {
     final uri = _buildUri('config/delta', context, {'since': '$sinceVersion'});
     final res = await _client.get(uri, headers: _headers(context));
     if (res.statusCode == 204) {

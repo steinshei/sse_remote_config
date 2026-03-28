@@ -57,7 +57,10 @@ void main() {
       final client = RemoteConfigClient(
         dataSource: dataSource,
         storage: storage,
-        requestContext: const ConfigRequestContext(appId: 't', platform: 'android'),
+        requestContext: const ConfigRequestContext(
+          appId: 't',
+          platform: 'android',
+        ),
         userId: 'fixed-user-golden',
       );
       await client.fetchAndActivate(forceFullFetch: true);
@@ -67,7 +70,10 @@ void main() {
       final reRead = RemoteConfigClient(
         dataSource: dataSource,
         storage: storage,
-        requestContext: const ConfigRequestContext(appId: 't', platform: 'android'),
+        requestContext: const ConfigRequestContext(
+          appId: 't',
+          platform: 'android',
+        ),
         userId: 'fixed-user-golden',
       );
       expect(reRead.getString('reader_engine'), engine);
@@ -84,7 +90,10 @@ void main() {
       final client = RemoteConfigClient(
         dataSource: ds,
         storage: storage,
-        requestContext: const ConfigRequestContext(appId: 't', platform: 'android'),
+        requestContext: const ConfigRequestContext(
+          appId: 't',
+          platform: 'android',
+        ),
       );
       await client.fetchAndActivate(forceFullFetch: true);
       expect(client.activeVersion, isNull);
@@ -95,7 +104,10 @@ void main() {
       final client2 = RemoteConfigClient(
         dataSource: ds,
         storage: storage,
-        requestContext: const ConfigRequestContext(appId: 't', platform: 'android'),
+        requestContext: const ConfigRequestContext(
+          appId: 't',
+          platform: 'android',
+        ),
       );
       await client2.initialize();
       expect(client2.activeVersion, 9);
@@ -124,7 +136,10 @@ void main() {
           ),
         ),
         storage: MemoryConfigStorage(),
-        requestContext: const ConfigRequestContext(appId: 't', platform: 'android'),
+        requestContext: const ConfigRequestContext(
+          appId: 't',
+          platform: 'android',
+        ),
         onImmediateActivationCommitted: coord.notifyImmediateActivate,
       );
       await client.fetchAndActivate(forceFullFetch: true);

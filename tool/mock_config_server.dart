@@ -8,18 +8,18 @@ import 'dart:convert';
 import 'dart:io';
 
 int _port = 8787;
-int _version = 0;
-int _chapter_price = 100;
-bool _new_reader_enabled = false;
+int _version = 42;
+int _chapterPrice = 0;
+bool _newReaderEnabled = false;
 
 Map<String, dynamic> get _bundle => {
   'version': _version,
   'data': {
-    'reader_engine': true,
+    'reader_engine': 'new',
     'theme_color': '#FF5722',
-    'chapter_price': _chapter_price,
+    'chapter_price': _chapterPrice,
     'home_banner': {'id': 1, 'img': 'https://cdn.example.com/banner/1.png'},
-    'feature_flags': {'new_reader_enabled': _new_reader_enabled},
+    'feature_flags': {'new_reader_enabled': _newReaderEnabled},
   },
   'conditions': {
     'region': 'ID',
@@ -53,7 +53,7 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  final server = await HttpServer.bind(InternetAddress.anyIPv4, _port);
+  final server = await HttpServer.bind(InternetAddress.loopbackIPv4, _port);
   print(
     'mock_config_server listening on http://${server.address.host}:${server.port}/v1/ …',
   );
@@ -61,14 +61,12 @@ Future<void> main(List<String> args) async {
     'Try: curl "http://127.0.0.1:$_port/v1/config/latest?app_id=demo&platform=android"',
   );
 
-  // 优化 1：心跳缩短至 5 秒，保持连接极其活跃
+  //定期心跳响应 + 供演示时使用的可选震动（每 45 秒进行一次震动版本更新并发出通知）。
   Timer.periodic(const Duration(seconds: 5), (_) => _broadcastSseComment());
-
-  // 优化 2：配置变更缩短至 10 秒（或者根据你的测试需求调整）
   Timer.periodic(const Duration(seconds: 10), (_) {
     _version++;
-    _chapter_price += 100;
-    _new_reader_enabled = !_new_reader_enabled;
+    _chapterPrice += 100;
+    _newReaderEnabled = !_newReaderEnabled;
     _broadcastConfigUpdated();
   });
 
@@ -122,13 +120,16 @@ Future<void> _sse(HttpRequest req) async {
   res.headers.set('Content-Type', 'text/event-stream; charset=utf-8');
   res.headers.set('Cache-Control', 'no-cache');
   res.headers.set('Connection', 'keep-alive');
-  await res.flush();
-  _sseClients.add(res);
-  // Initial ping
+
+  // 优化：发送一个稍微大一点的初始化注释，打破某些浏览器的 1024 字节缓冲限制
+  res.write(': ${' ' * 1024}\n');
   res.write(': hello\n\n');
   await res.flush();
+
+  _sseClients.add(res);
 }
 
+// 修改 _broadcastSseComment
 Future<void> _broadcastSseComment() async {
   // 加上 async
   final dead = <HttpResponse>[];
@@ -146,6 +147,7 @@ Future<void> _broadcastSseComment() async {
   _sseClients.removeWhere(dead.contains);
 }
 
+// 修改 _broadcastConfigUpdated
 Future<void> _broadcastConfigUpdated() async {
   // 加上 async
   final payload = jsonEncode({'version': _version, 'kind': 'publish'});

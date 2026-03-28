@@ -74,7 +74,7 @@ Future<void> main() async {
     analytics: analytics,
     sseBaseUrl: _configApiBase,
     enableSse: _configApiBase.isNotEmpty,
-    pollMinInterval: const Duration(seconds: 2),
+    pollMinInterval: const Duration(seconds: 5),
   );
 
   await sync.start();

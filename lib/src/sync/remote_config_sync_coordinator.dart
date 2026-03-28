@@ -18,8 +18,8 @@ class RemoteConfigSyncCoordinator with WidgetsBindingObserver {
     this.pollMinInterval = const Duration(minutes: 5),
     Connectivity? connectivity,
     http.Client? httpClient,
-  })  : connectivity = connectivity ?? Connectivity(),
-        _httpClient = httpClient ?? http.Client();
+  }) : connectivity = connectivity ?? Connectivity(),
+       _httpClient = httpClient ?? http.Client();
 
   final RemoteConfigClient client;
   final RemoteConfigAnalytics analytics;
@@ -79,7 +79,8 @@ class RemoteConfigSyncCoordinator with WidgetsBindingObserver {
       if (enableSse && sseBaseUrl.isNotEmpty) {
         unawaited(_startSse());
       }
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       unawaited(_stopSse());
     }
   }
@@ -123,9 +124,15 @@ class RemoteConfigSyncCoordinator with WidgetsBindingObserver {
         }
       });
       await _sse!.start();
-      analytics.sseConnectResult(success: true, durationMs: sw.elapsedMilliseconds);
+      analytics.sseConnectResult(
+        success: true,
+        durationMs: sw.elapsedMilliseconds,
+      );
     } catch (_) {
-      analytics.sseConnectResult(success: false, durationMs: sw.elapsedMilliseconds);
+      analytics.sseConnectResult(
+        success: false,
+        durationMs: sw.elapsedMilliseconds,
+      );
     }
   }
 

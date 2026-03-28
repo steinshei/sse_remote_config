@@ -2,7 +2,7 @@
 
 自研远程配置 **Flutter 客户端 SDK 骨架**：REST（latest / delta）、MMKV 持久化、MD5 稳定分桶合并实验桶、[ConfigSseClient](lib/src/sse/config_sse_client.dart) SSE 通知骨架。
 
-设计文档见仓库根目录 [docs/api-contract-v1.md](docs/api-contract-v1.md)、[docs/hash-bucketing-and-cache.md](docs/hash-bucketing-and-cache.md)、[docs/crash-rollback-attribution.md](docs/crash-rollback-attribution.md)。
+设计文档见仓库根目录 [docs/core-implementation.md](docs/core-implementation.md)
 
 ## 快速开始
 
@@ -42,13 +42,25 @@ flutter run -d chrome
 
 仓库内 [tool/mock_config_server.dart](tool/mock_config_server.dart) 提供 `latest` / `delta` / `stream`（含周期性 `config_updated`）。
 
+
+flutter analyze 通过；包内 6 个单测 + example widget_test 通过；flutter build web（example）通过。
+联调示例：
+
+### Example:
+
 ```bash
+
+flutter test
+
 # 终端 1
 dart run tool/mock_config_server.dart
 
 # 终端 2 — iOS/Android/Web 均可试 SSE
 cd example
 flutter run --dart-define=CONFIG_API_BASE=http://127.0.0.1:8787/v1
+
+flutter run -d android --dart-define=CONFIG_API_BASE=http://10.0.2.2:8787/v1
+模拟器必须使用 10.0.2.2，否则 SSE 连接会一直处于断开重连状态，导致看起来像延时
 ```
 
 不设 `CONFIG_API_BASE` 时 Example 仍使用 **Stub** 数据源（不连网）。
@@ -61,15 +73,4 @@ flutter run --dart-define=CONFIG_API_BASE=http://127.0.0.1:8787/v1
 
 Fix README typo - NoOp is in remote_config_analytics.dart
 
-## Example
 
-```bash
-cd example
-flutter run
-```
-
-## 测试
-
-```bash
-flutter test
-```
