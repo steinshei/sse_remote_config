@@ -9,7 +9,7 @@
 | 1️⃣ 主入口 | 1 | 业务逻辑编排 |
 | 2️⃣ 数据源层 | 3 | 网络请求抽象 |
 | 3️⃣ 存储层 | 3 | 本地持久化 |
-| 4️⃣ 实时通知 | 1 | SSE长连接 |
+| 4️⃣ 实时通知 | 3 | transport抽象 + SSE实现 + 通知模型 |
 | 5️⃣ A/B实验 | 1 | 分桶算法 |
 | 6️⃣ 同步协调 | 1 | 生命周期管理 |
 | 7️⃣ 安全容灾 | 1 | 崩溃回滚 |
@@ -218,11 +218,52 @@ MMKV
 
 ### 4️⃣ 实时通知
 
-#### ConfigSseClient
+#### RealtimeNotificationTransport
+
+**文件**: [`lib/src/realtime/realtime_notification_transport.dart`](../lib/src/realtime/realtime_notification_transport.dart)
+
+**职责**: 定义统一的实时通知传输抽象，隔离具体协议实现
+
+**接口**:
+
+```dart
+abstract class RealtimeNotificationTransport {
+  Stream<ConfigNotification> get notifications;
+  Future<void> start();
+  Future<void> stop();
+  Future<void> dispose();
+}
+```
+
+---
+
+#### ConfigNotification
+
+**文件**: [`lib/src/realtime/config_notification.dart`](../lib/src/realtime/config_notification.dart)
+
+**职责**: transport 层向上游暴露的统一通知模型
+
+```dart
+class ConfigNotification {
+  final String event;
+  final String raw;
+  final Map<String, dynamic>? data;
+}
+```
+
+---
+
+#### SseConfigNotificationTransport
 
 **文件**: [`lib/src/sse/config_sse_client.dart`](lib/src/sse/config_sse_client.dart)
 
-**职责**: SSE长连接客户端，接收服务端通知
+**职责**: 当前默认的 SSE 实时通知实现，负责连接 `/config/stream` 并发出 [ConfigNotification]
+
+**兼容说明**:
+
+- 旧名称 `ConfigSseClient` 仍然保留
+- 旧别名 `SseNotification` 仍映射到 `ConfigNotification`
+- 业务层已不再直接依赖具体 SSE 类型
 
 **连接流程**:
 
@@ -252,36 +293,31 @@ reconnectDelayMs = 1000
 **通知流**:
 
 ```dart
-class ConfigSseClient {
-  final _events = StreamController<SseNotification>.broadcast();
-  Stream<SseNotification> get notifications => _events.stream;
-}
-
-class SseNotification {
-  final String event;        // "ping" / "config_updated" / "config_revoke"
-  final String raw;          // 原始SSE数据
-  final Map<String, dynamic>? data;  // 解析后的JSON
+class SseConfigNotificationTransport
+    implements RealtimeNotificationTransport {
+  final _events = StreamController<ConfigNotification>.broadcast();
+  Stream<ConfigNotification> get notifications => _events.stream;
 }
 ```
 
 **示例代码**:
 
 ```dart
-final sse = ConfigSseClient(
+final transport = SseConfigNotificationTransport(
   baseUrl: 'https://api.example.com/v1',
   context: requestContext,
 );
 
-await sse.start();
+await transport.start();
 
-sse.notifications.listen((notification) {
+transport.notifications.listen((notification) {
   if (notification.event == 'config_updated' || notification.event == 'config_revoke') {
     // 触发重新拉取
     client.fetchAndActivate();
   }
 });
 
-await sse.stop();
+await transport.dispose();
 ```
 
 ---
@@ -366,17 +402,17 @@ stableBucketIndex(
 
 **文件**: [`lib/src/sync/remote_config_sync_coordinator.dart`](lib/src/sync/remote_config_sync_coordinator.dart)
 
-**职责**: 统一管理SSE、轮询、网络监听、生命周期
+**职责**: 统一管理实时 transport、轮询、网络监听、生命周期
 
 **职责清单**:
 
 | 职责 | 实现方式 |
 |-----|---------|
 | 启动初始化 | 初始化 + 首次fetch |
-| 实时更新 | SSE监听 `config_updated` |
+| 实时更新 | 监听 `ConfigNotification` |
 | 兜底重试 | 轮询 (默认5分钟) |
 | 网络切换 | 连接变化时立即重拉取 |
-| App状态管理 | 前台保持连接，后台断开SSE |
+| App状态管理 | 前台保持 transport 连接，后台断开 |
 | 线程安全 | 异步执行，不阻塞UI |
 
 **启动流程**:
@@ -387,6 +423,14 @@ final sync = RemoteConfigSyncCoordinator(
   sseBaseUrl: 'https://api.example.com/v1',
   pollMinInterval: Duration(minutes: 5),  // 轮询间隔
   enableSse: true,                        // 启用SSE
+  // 可选：注入其他 transport
+  // transportFactory: ({required baseUrl, required context, required httpClient}) {
+  //   return SseConfigNotificationTransport(
+  //     baseUrl: baseUrl,
+  //     context: context,
+  //     httpClient: httpClient,
+  //   );
+  // },
 );
 
 await sync.start();
@@ -394,7 +438,7 @@ await sync.start();
 // 2. client.fetchAndActivate() - 首次拉取
 // 3. 启动轮询Timer
 // 4. 监听网络变化
-// 5. 建立SSE连接
+// 5. 建立实时通知连接
 ```
 
 **App生命周期处理**:
@@ -404,9 +448,9 @@ await sync.start();
 void didChangeAppLifecycleState(AppLifecycleState state) {
   if (state == AppLifecycleState.resumed) {
     _pollIfDue(reason: 'resumed');
-    _startSse();  // 前台恢复SSE连接
+    _startSse();  // 前台恢复实时连接
   } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-    _stopSse();   // 后台断开SSE，省电
+    _stopSse();   // 后台断开实时连接，省电
   }
 }
 ```
@@ -416,7 +460,7 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
 ```dart
 await sync.stop();
 // 1. 移除WidgetsBindingObserver
-// 2. 停止SSE连接
+// 2. 停止并释放 transport
 // 3. 取消网络监听
 // 4. 取消轮询Timer
 ```
@@ -642,18 +686,18 @@ stableBucketIndex(userId, "reader_engine_ab", 2)
     }
 ```
 
-### 4.3 SSE事件处理
+### 4.3 实时事件处理
 
 ```
 服务端推送
     event: config_updated
     data: {"version": 43, "kind": "publish"}
 
-ConfigSseClient接收
-    SseNotification(event: "config_updated", data: {...})
+SseConfigNotificationTransport接收
+    ConfigNotification(event: "config_updated", data: {...})
 
 触发回调
-    _sseSub.listen((n) {
+    _transportSub.listen((n) {
       if (n.event == 'config_updated') {
         client.fetchAndActivate();  // 重新拉取
       }

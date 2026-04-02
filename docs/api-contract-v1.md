@@ -107,6 +107,8 @@ HTTP 4xx/5xx 时，响应体优先使用 JSON（502/504 等网关错误可能无
 
 实时通知：**不通过 SSE 下发完整配置 JSON**，仅通知「有新版本或事件」；客户端收到后调用 `latest` 或 `delta`。
 
+> 说明：本节描述的是当前远程配置库自己的实时通知协议，不是 MCP / JSON-RPC transport。若后续需要引入 MCP `Streamable HTTP`，请另见 [mcp-transport-adoption.md](mcp-transport-adoption.md)。
+
 ### 4.1 请求
 
 - **Path**: `/v1/config/stream`
