@@ -5,8 +5,18 @@ import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
 import '../analytics/remote_config_analytics.dart';
+import '../models/config_request_context.dart';
 import '../remote_config_client.dart';
+import '../realtime/config_notification.dart';
+import '../realtime/realtime_notification_transport.dart';
 import '../sse/config_sse_client.dart';
+
+typedef RealtimeNotificationTransportFactory =
+    RealtimeNotificationTransport Function({
+      required String baseUrl,
+      required ConfigRequestContext context,
+      required http.Client httpClient,
+    });
 
 /// Wires [RemoteConfigClient] with optional SSE, polling floor, connectivity, and lifecycle.
 class RemoteConfigSyncCoordinator with WidgetsBindingObserver {
@@ -18,8 +28,10 @@ class RemoteConfigSyncCoordinator with WidgetsBindingObserver {
     this.pollMinInterval = const Duration(minutes: 5),
     Connectivity? connectivity,
     http.Client? httpClient,
+    RealtimeNotificationTransportFactory? transportFactory,
   }) : connectivity = connectivity ?? Connectivity(),
-       _httpClient = httpClient ?? http.Client();
+       _httpClient = httpClient ?? http.Client(),
+       _transportFactory = transportFactory ?? _defaultTransportFactory;
 
   final RemoteConfigClient client;
   final RemoteConfigAnalytics analytics;
@@ -28,9 +40,10 @@ class RemoteConfigSyncCoordinator with WidgetsBindingObserver {
   final Duration pollMinInterval;
   final Connectivity connectivity;
   final http.Client _httpClient;
+  final RealtimeNotificationTransportFactory _transportFactory;
 
-  ConfigSseClient? _sse;
-  StreamSubscription<SseNotification>? _sseSub;
+  RealtimeNotificationTransport? _transport;
+  StreamSubscription<ConfigNotification>? _transportSub;
   StreamSubscription<List<ConnectivityResult>>? _netSub;
   Timer? _pollTimer;
   DateTime? _lastFetchAt;
@@ -108,12 +121,12 @@ class RemoteConfigSyncCoordinator with WidgetsBindingObserver {
     analytics.sseConnectAttempt();
     final sw = Stopwatch()..start();
     try {
-      _sse = ConfigSseClient(
+      _transport = _transportFactory(
         baseUrl: sseBaseUrl,
         context: client.requestContext,
         httpClient: _httpClient,
       );
-      _sseSub = _sse!.notifications.listen((n) {
+      _transportSub = _transport!.notifications.listen((n) {
         if (n.event == 'ping') {
           analytics.sseCommentOrPing();
           return;
@@ -123,7 +136,7 @@ class RemoteConfigSyncCoordinator with WidgetsBindingObserver {
           unawaited(_fetch());
         }
       });
-      await _sse!.start();
+      await _transport!.start();
       analytics.sseConnectResult(
         success: true,
         durationMs: sw.elapsedMilliseconds,
@@ -137,12 +150,24 @@ class RemoteConfigSyncCoordinator with WidgetsBindingObserver {
   }
 
   Future<void> _stopSse() async {
-    await _sseSub?.cancel();
-    _sseSub = null;
-    if (_sse != null) {
-      await _sse!.stop();
+    await _transportSub?.cancel();
+    _transportSub = null;
+    if (_transport != null) {
+      await _transport!.dispose();
       analytics.sseDisconnected(reason: 'paused_or_stop');
     }
-    _sse = null;
+    _transport = null;
+  }
+
+  static RealtimeNotificationTransport _defaultTransportFactory({
+    required String baseUrl,
+    required ConfigRequestContext context,
+    required http.Client httpClient,
+  }) {
+    return SseConfigNotificationTransport(
+      baseUrl: baseUrl,
+      context: context,
+      httpClient: httpClient,
+    );
   }
 }

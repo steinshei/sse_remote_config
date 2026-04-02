@@ -4,42 +4,47 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/config_request_context.dart';
+import '../realtime/config_notification.dart';
+import '../realtime/realtime_notification_transport.dart';
 
 /// SSE notify — see [docs/api-contract-v1.md] §4.
-///
-/// Skeleton: connects, parses `event` / `data` lines, emits [SseNotification].
-/// Wire with [RemoteConfigClient.fetchAndActivate] when [onEvent] fires.
-class ConfigSseClient {
-  ConfigSseClient({
+class SseConfigNotificationTransport implements RealtimeNotificationTransport {
+  SseConfigNotificationTransport({
     required this.baseUrl,
     required this.context,
     http.Client? httpClient,
     this.reconnectDelayMs = 1000,
     this.reconnectDelayMaxMs = 30000,
-  }) : _client = httpClient ?? http.Client();
+  }) : _client = httpClient ?? http.Client(),
+       _ownsClient = httpClient == null;
 
   /// Root including `/v1`, same as [HttpRemoteConfigDataSource].
   final String baseUrl;
   ConfigRequestContext context;
   final http.Client _client;
+  final bool _ownsClient;
 
   int reconnectDelayMs;
   int reconnectDelayMaxMs;
 
-  final _events = StreamController<SseNotification>.broadcast();
-  Stream<SseNotification> get notifications => _events.stream;
+  final _events = StreamController<ConfigNotification>.broadcast();
+  @override
+  Stream<ConfigNotification> get notifications => _events.stream;
 
   StreamSubscription<String>? _lineSub;
   http.StreamedResponse? _response;
   Timer? _reconnectTimer;
   bool _stopping = false;
+  bool _disposed = false;
   String _carry = '';
 
   /// `event` field from last line group; defaults to `message`.
   String _currentEvent = 'message';
 
+  @override
   Future<void> start() => _connect();
 
+  @override
   Future<void> stop() async {
     _stopping = true;
     _reconnectTimer?.cancel();
@@ -50,7 +55,7 @@ class ConfigSseClient {
   }
 
   Future<void> _scheduleReconnect() async {
-    if (_stopping) {
+    if (_stopping || _disposed) {
       return;
     }
     _reconnectTimer?.cancel();
@@ -62,7 +67,7 @@ class ConfigSseClient {
   }
 
   Future<void> _connect() async {
-    if (_stopping) {
+    if (_stopping || _disposed) {
       return;
     }
     await _lineSub?.cancel();
@@ -138,21 +143,28 @@ class ConfigSseClient {
     final event = _currentEvent;
     _currentEvent = 'message';
     if (!_events.isClosed) {
-      _events.add(SseNotification(event: event, data: json, raw: raw));
+      _events.add(ConfigNotification(event: event, data: json, raw: raw));
     }
   }
 
+  @override
   Future<void> dispose() async {
+    _disposed = true;
     await stop();
     await _events.close();
-    _client.close();
+    if (_ownsClient) {
+      _client.close();
+    }
   }
 }
 
-class SseNotification {
-  SseNotification({required this.event, required this.raw, this.data});
-
-  final String event;
-  final String raw;
-  final Map<String, dynamic>? data;
+/// Backward-compatible SSE client name for callers importing the old API.
+class ConfigSseClient extends SseConfigNotificationTransport {
+  ConfigSseClient({
+    required super.baseUrl,
+    required super.context,
+    super.httpClient,
+    super.reconnectDelayMs,
+    super.reconnectDelayMaxMs,
+  });
 }

@@ -6,6 +6,8 @@ export 'src/models/config_update.dart';
 export 'src/remote/http_remote_config_data_source.dart';
 export 'src/remote/remote_config_data_source.dart';
 export 'src/remote/stub_remote_config_data_source.dart';
+export 'src/realtime/config_notification.dart';
+export 'src/realtime/realtime_notification_transport.dart';
 export 'src/remote_config_client.dart';
 export 'src/safety/crash_recovery_coordinator.dart';
 export 'src/safety/crash_recovery_mmkv_persistence.dart';
